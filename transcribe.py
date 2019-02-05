@@ -37,6 +37,12 @@ class Youtube:
         for entry in entries:
             videoId=entry['snippet']['resourceId']['videoId']
             toReturn.append({'title':entry['snippet']['title'],'videoID':videoId,'videoURL':'https://www.youtube.com/watch?'+urllib.parse.urlencode({'v':videoId})})
+
+        #get video duration and caption status
+        for video in toReturn:
+            videoJSON=json.loads(urllib.request.urlopen('https://www.googleapis.com/youtube/v3/videos?'+urllib.parse.urlencode({'part':'contentDetails','id':video['videoID'],'key':self.apiKey})).read())
+            video['duration']=videoJSON['items'][0]['contentDetails']['duration']
+            video['captioned']=videoJSON['items'][0]['contentDetails']['caption']=='true' #make this True if the response is 'true' false otherwise
         return toReturn
 
 def getAudioFromURL(url)->tempfile.NamedTemporaryFile:
