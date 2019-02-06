@@ -1,5 +1,27 @@
 import tempfile
 import os
+import urllib
+import ffmpeg
+
+class Location:
+    '''Class to represent the location of origin for records to be transcribed'''
+    def __init__(country:str,region:str,location:str):
+        '''Create a new Location instance representing the county/municipality location in state/region region in country country'''
+        self.country=country
+        self.region=region
+        self.location=location
+
+class Record:
+    '''Class to represent individual records to be transcribed'''
+    def __init__(title:str,id:str,organization:str,location:Location,audio:tempFile.TemporaryFile):
+        '''Create a new Record instance representing a record with title title produced by group/organization organization in location location.
+        The passed-in id should uniquely identify the Record amongst other records produced by the same organization, and should not change if the resource is re-fetched
+        The record audio should be passed in as a TemporaryFile'''
+        self.title=title
+        self.id=id
+        self.org=organization
+        self.audio=audio
+
 def getAudioFromURL(url)->tempfile.NamedTemporaryFile:
     remoteVid=urllib.request.urlopen(url)
     tempHandle,tempPath=tempfile.mkstemp()
