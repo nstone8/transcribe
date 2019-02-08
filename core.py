@@ -75,35 +75,38 @@ def shotgun(audio:tempfile.NamedTemporaryFile,snipSize:int,depth:int)->list:
     '''Take a audio file and sample it into overlapping segments. Each segment will be snipSize long and any single moment will be sampled by depth overlapping segments'''
     offset=snipSize/depth
     allChunks=[]
-    while for i in range(depth):
-        allChunks.append(chunkAudio(audio,snipSize,offset*i))
+    for i in range(depth):
+        allChunks.append(chunkAudio(audio,snipSize,offset*i)['files'])
         i+=1
     #interleve chunks so we have an array of overlapping reads in chronological order
     j=0
-    while True:
-        
+    reads=[]
+    go=True
+    while go:
+        for chunkArray in allChunks:
+            try:
+                reads.append(chunkArray[j])
+            except IndexError:
+                #We're out of reads
+                go=False
+                break
+        j+=1
+    return reads
+
 def audioToText(audio:tempfile.NamedTemporaryFile)->str:
-    #create two series of audio chunks which overlap
-    aChunks=chunkAudio(audio,5,0)
-    bChunks=chunkAudio(audio,5,2.5)
-    #convert all chunks to text
-    projectDir=os.sep.join(inspect.getfile(sys.modules[__name__]).split(os.sep)[:-1])
-    #get chunk filenames
-    aFiles=aChunks['files']
-    bFiles=bChunks['files']
-    aText=[]
-    bText=[]
+    #get series of overlapping reads
+    reads=shotgun(audio,6,6)
+    #convert all reads to text
+    projectDir=os.sep.join(inspect.getfile(sys.modules[__name__]).split(os.sep)[:-1]) #find deepsearch in transcribe directory
     dsCommand='deepspeech --model '+os.path.join(projectDir,'deepspeech','models/output_graph.pbmm')+' --alphabet '+os.path.join(projectDir,'deepspeech','models/alphabet.txt')+' --lm '+os.path.join(projectDir,'deepspeech','models/lm.binary')+' --trie '+os.path.join(projectDir,'deepspeech','models/trie')+' --audio '
-    for a in aFiles:
+    readText=[]
+    k=1
+    for a in reads:
+        print('converting read',k,'of',len(reads))
         #do speech recognition
         thisText=os.popen(dsCommand+a).read()
         print('***',thisText,'***')
-        aText.append(thisText)
-
-    for b in bFiles:
-        #do speech recognition
-        thisText=os.popen(dsCommand+b).read()
-        print('***',thisText,'***')
-        bText.append(thisText)
-    return aText,bText
+        readText.append(thisText)
+        k+=1
+    return readText
 
