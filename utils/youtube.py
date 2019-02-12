@@ -49,7 +49,7 @@ class Youtube:
         def gen():
             #generate records
             for v in play:
-                url=getRawURL(p['videoURL'])
+                url=getRawURL(v['videoURL'])
                 audio=tr.core.getAudioFromURL(url)
                 rec=tr.core.Record(v['title'],v['videoID'],organization,location,audio)
                 yield rec

@@ -1,1 +1,1 @@
-import transcribe.core
+from transcribe.core import *

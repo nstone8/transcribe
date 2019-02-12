@@ -93,9 +93,59 @@ def shotgun(audio:tempfile.NamedTemporaryFile,snipSize:int,depth:int)->list:
         j+=1
     return reads
 
+def alignReads(free:list,fixed:list=None)->(str,int):
+    '''Try all alignment permutations of the reads given in 'free' (which should be a list of lists containing every word for each read and return the read with the longest overlapping sequence and its corresponding score'''
+    bestSeq='' #this will be our highest scoring (longest) aligned sequence
+    bestScore=0
+    if not fixed:
+        #fix one read if we haven't already
+        fixed=[free[0]] #this should still be a list of lists
+        free=free[1:]
+    thisRead=free[0] #this recursion level will change the position of this read
+    free=free[1:]
+    fixed=[f for f in fixed if f] #delete any empty reads
+    for i in range(len(fixed)):
+        fixed[i]=([None]*len(thisRead))+fixed[i] #pad all fixed reads with None so we barely don't overlap
+            
+    while fixed: #while we haven't run out of things to compare to
+        if free: #we are not at the bottom of the recursion
+            newSeq,newScore=alignReads(free,fixed+[thisRead])
+            if newScore>bestScore: #new winner
+                bestSeq=newSeq
+                bestScore=newScore
+                #print(bestScore)
+        else: #we are at the bottom of the recursion, time to count some shit
+            allSeq=fixed+[thisRead]
+            maxLen=max([len(j) for j in allSeq]) #find the maximum length of all of our reads
+            totalScore=0
+            thisSequence=''
+            for i in range(maxLen):
+                #see if we have any overlapping homology
+                thisPosWords=[seq[i] for seq in allSeq if i<len(seq) if seq[i]]#ignore sequences we've exhausted and None padding
+                #find the word that occurs the most, we will only score repeats of that word
+                wordCounts={word:thisPosWords.count(word) for word in set(thisPosWords)} #strip none
+                mostCommonWord=''
+                highestCount=0            
+                for word in wordCounts:
+                    if wordCounts[word]>highestCount:
+                        mostCommonWord=word
+                        highestCount=wordCounts[word]
+                #increment score for this iteration
+                totalScore+=(highestCount-1)**2 #The purpose of this (n-1)**2 scoring is to incentivize large amounts of overlap at one locus over smaller amounts of overlap at multiple locations
+                thisSequence=thisSequence+' '+mostCommonWord #our consensus sequence for this arrangement will be the most common word at each location
+            if totalScore>bestScore: #new winner
+                bestScore=totalScore
+                bestSeq=thisSequence
+                #print('At bottom of recursion, best score:',bestScore)
+        #after counting or starting the next round of recursion, cut one entry off of all of our fixed sequences to scrooch up thisreads relative position by one
+        for i in range(len(fixed)):
+            fixed[i]=fixed[i][1:]
+        fixed=[f for f in fixed if f] #delete any now empty fixed reads
+    return bestSeq,bestScore
+
 def audioToText(audio:tempfile.NamedTemporaryFile)->str:
     #get series of overlapping reads
-    reads=shotgun(audio,6,6)
+    reads=shotgun(audio,5,5) #Always want depth to be odd
     #convert all reads to text
     projectDir=os.sep.join(inspect.getfile(sys.modules[__name__]).split(os.sep)[:-1]) #find deepsearch in transcribe directory
     dsCommand='deepspeech --model '+os.path.join(projectDir,'deepspeech','models/output_graph.pbmm')+' --alphabet '+os.path.join(projectDir,'deepspeech','models/alphabet.txt')+' --lm '+os.path.join(projectDir,'deepspeech','models/lm.binary')+' --trie '+os.path.join(projectDir,'deepspeech','models/trie')+' --audio '
