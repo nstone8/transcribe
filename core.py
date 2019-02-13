@@ -5,6 +5,7 @@ import ffmpeg
 import re
 import sys
 import inspect
+import time
 
 class Location:
     '''Class to represent the location of origin for records to be transcribed'''
@@ -93,22 +94,34 @@ def shotgun(audio:tempfile.NamedTemporaryFile,snipSize:int,depth:int)->list:
         j+=1
     return reads
 
-def alignReads(free:list,fixed:list=None)->(str,int):
+def alignReadsExhaustive(free:list,fixed:list=None)->(str,int):
+    startTime=time.perf_counter()
     '''Try all alignment permutations of the reads given in 'free' (which should be a list of lists containing every word for each read and return the read with the longest overlapping sequence and its corresponding score'''
+    free=free[:]
     bestSeq='' #this will be our highest scoring (longest) aligned sequence
     bestScore=0
     if not fixed:
         #fix one read if we haven't already
-        fixed=[free[0]] #this should still be a list of lists
-        free=free[1:]
-    thisRead=free[0] #this recursion level will change the position of this read
-    free=free[1:]
+        fixed=[free[0][:]] #this should still be a list of lists
+        free=free[1:][:]
+    thisRead=free[0][:] #this recursion level will change the position of this read, do copy so the recursion doesn't walk all over itself
+    free=free[1:][:]
     fixed=[f for f in fixed if f] #delete any empty reads
     for i in range(len(fixed)):
         fixed[i]=([None]*len(thisRead))+fixed[i] #pad all fixed reads with None so we barely don't overlap
             
-    while fixed: #while we haven't run out of things to compare to
-        if free: #we are not at the bottom of the recursion
+    while True: #while we haven't run out of things to compare to, test first thing below
+        noneLen=len([x for x in thisRead if not x]) #index of the first non-None word in thisRead
+        fixedLengths=[len(f) for f in fixed]
+        if len(fixed)==1:
+            #Top level of recursion
+            print('noneLen:',noneLen)
+            print('max(fixedLengths)',max(fixedLengths))
+            print('elapsed time (s):',time.perf_counter()-startTime)
+            print('\n')
+        if noneLen>max(fixedLengths): #We are no longer overlapping
+            break
+        elif free: #we are not at the bottom of the recursion
             newSeq,newScore=alignReads(free,fixed+[thisRead])
             if newScore>bestScore: #new winner
                 bestSeq=newSeq
@@ -136,11 +149,12 @@ def alignReads(free:list,fixed:list=None)->(str,int):
             if totalScore>bestScore: #new winner
                 bestScore=totalScore
                 bestSeq=thisSequence
-                #print('At bottom of recursion, best score:',bestScore)
-        #after counting or starting the next round of recursion, cut one entry off of all of our fixed sequences to scrooch up thisreads relative position by one
-        for i in range(len(fixed)):
-            fixed[i]=fixed[i][1:]
-        fixed=[f for f in fixed if f] #delete any now empty fixed reads
+        #after counting or starting the next round of recursion, add a None to the front of thisread or remove a None from the front of all fixed to scrooch its relative position up one
+        firstFixed=[f[0] for f in fixed] #all the first entries in fixed
+        if not any(firstFixed): #if all of fixed start with None
+            fixed=[f[1:] for f in fixed] #trim one none off all fixed
+        else:
+            thisRead[0:0]=[None] #add a none to thisread
     return bestSeq,bestScore
 
 def audioToText(audio:tempfile.NamedTemporaryFile)->str:
