@@ -174,3 +174,31 @@ def audioToText(audio:tempfile.NamedTemporaryFile)->str:
         k+=1
     return readText
 
+def alignReads(*reads:str)->str:
+    overlaps=[]
+    readsToDo=list(range(len(reads)))
+    readsToDo.reverse()
+    while readsToDo:
+        i=readsToDo.pop()
+        thisRead=reads[i]
+        thisReadOverlaps=[]
+        #otherReads=[reads[j] for j in range(len(reads)) if j!=i]
+        #Scan through this read, searching for subsets at least 2 words long present in the other reads
+        for k in readsToDo: #for the index of all other reads which haven't been compared to this one
+            curPos=0
+            while True:
+                if curPos > (len(thisRead)-1):#don't look at the last word, it has to be part of a longer match to count (2 word min)
+                    break
+                if thisRead[curPos] in reads[k]: #one word overlap
+                    matchStart=reads[k].index(thisRead[curPos]) #index of the start of the overlap in the 'other' read
+                    if thisRead[curPos+1]==reads[k][matchStart+1]: #got at least a two word match, see how long it is and record
+                        matchLen=2
+                        while thisRead[curPos+matchLen]==reads[k][matchStart+matchLen]: #the match is at least matchLen+1 long
+                            matchLen+=1
+                            if (len(thisRead)<=curPos+matchLen) or (len(reads[k])<=matchStart+matchLen): #check that we aren't going to run off the end of either of our lists, break if we are
+                                break
+                        #we now know the match length, record it's length and start position on both reads
+                        overlaps.append({'reads':(i,k),'start':(curPos,matchStart),'length':matchLen})
+                        curPos=curPos+matchLen #don't need to check parts of these strings for another match
+                curPos+=1
+    return overlaps
