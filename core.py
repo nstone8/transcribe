@@ -201,4 +201,51 @@ def alignReads(*reads:str)->str:
                         overlaps.append({'reads':(i,k),'start':(curPos,matchStart),'length':matchLen})
                         curPos=curPos+matchLen #don't need to check parts of these strings for another match
                 curPos+=1
-    return overlaps
+    #reconstruct consensus sequence from overlaps
+    #Which read is involved in the most overlaps?
+    overlapReads=[]
+    for o in overlaps:
+        overlapReads.extend(o['reads'])
+    matchedReads=set(overlapReads) #throw away reads which don't have any overlaps
+    orderedReads=[]
+    while matchedReads: #make list of reads in decreasing order of total matches
+        maxCount=0
+        maxRead=None
+        for r in matchedReads:
+            thisCount=overlapReads.count(r)
+            if thisCount>maxCount:
+                maxCount=thisCount
+                maxRead=r
+        orderedReads.append(maxRead)
+        matchedReads=matchedReads-{maxRead} #remove this read from consideration in order to find the next most prolific matcher
+    #fix most matched read, then align others to that (and subsequent fixed reads) so that the longest overlap for that read matches
+    orderedReads.reverse() #go in decending order when popped
+    fixedReads=[orderedReads.pop()]
+    readShifts={fixedReads[0]:0} #how far must each read be shifted to get it in alignment
+    fixedOverlaps=[o for o in overlaps if fixedReads[0] in o['reads']]
+    while orderedReads:
+        #calculate the shift required to bring the read in line and record it. If no matches are available for the read in fixedOverlaps, push it back on orderedReads
+        thisRead=orderedReads.pop()
+        matchingOverlaps=[f for f in fixedOverlaps if thisRead in f['reads']]
+        if matchingOverlaps:
+            #we align with a fixed read, calculate shift
+            #find longest match between this read and fixed reads
+            maxOverlapLength=0
+            maxOverlap=None
+            for o in matchingOverlaps:
+                if o['length']>maxOverlapLength:
+                    maxOverlapLength=o['length']
+                    maxOverlap=o
+            thisReadIndex=maxOverlap['reads'].index(thisRead)
+            fixedReadIndex=0 if thisReadIndex else 1 #if thisReadIndex is 1, fixedReadIndex is 0 or vice versa
+            thisShift=maxOverlap['start'][fixedReadIndex]-maxOverlap['start'][thisReadIndex]
+            readShifts[thisRead]=thisShift
+            #Add new fixed overlaps (overlaps that include this read but not any already fixed reads)
+            newFixedOverlaps=[o for o in overlaps if (thisRead in o['reads'] and (not(set(o['reads']) & set(fixedReads))))]
+            fixedOverlaps.extend(newFixedOverlaps)
+            fixedReads.append(thisRead)
+        else:
+            #no matches with fixed read, push back on orderedReads
+            orderedReads[0:0]=[thisRead]
+    return (reads,overlaps,readShifts)
+
