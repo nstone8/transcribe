@@ -172,6 +172,9 @@ def audioToText(audio:tempfile.NamedTemporaryFile)->str:
         print('***',thisText,'***')
         readText.append(thisText)
         k+=1
+    readText=[r.split() for r in readText] #split readText into words
+    #align all reads
+    
     return readText
 
 def alignReads(*reads:str)->str:
@@ -247,5 +250,26 @@ def alignReads(*reads:str)->str:
         else:
             #no matches with fixed read, push back on orderedReads
             orderedReads[0:0]=[thisRead]
-    return (reads,overlaps,readShifts)
+    alignedReads={}
+    for r in readShifts: #build a dict containing all the words at each shifted position
+        thisShift=readShifts[r]
+        thisRead=reads[r]
+        for i in range(len(thisRead)):
+            if not i+thisShift in alignedReads:
+                alignedReads[i+thisShift]=[]
+            alignedReads[i+thisShift].append(thisRead[i])
+        sortedKeys=list(alignedReads.keys()) #pick the majority opinion at each location
+        sortedKeys.sort()
+        consensus=[]
+        for k in sortedKeys:
+            #count each unique word
+            maxWord=None
+            maxCount=0
+            for word in set(alignedReads[k]):
+                thisCount=alignedReads[k].count(word)
+                if thisCount>maxCount:
+                    maxCount=thisCount
+                    maxWord=word
+            consensus.append(maxWord)
+    return consensus
 

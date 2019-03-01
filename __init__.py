@@ -1,1 +1,3 @@
-from transcribe.core import *
+import transcribe.core
+from transcribe.utils import *
+
