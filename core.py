@@ -159,7 +159,8 @@ def alignReadsExhaustive(free:list,fixed:list=None)->(str,int):
 
 def audioToText(audio:tempfile.NamedTemporaryFile)->str:
     #get series of overlapping reads
-    reads=shotgun(audio,5,5) #Always want depth to be odd
+    depth=5
+    reads=shotgun(audio,5,depth) #Always want depth to be odd
     #convert all reads to text
     projectDir=os.sep.join(inspect.getfile(sys.modules[__name__]).split(os.sep)[:-1]) #find deepsearch in transcribe directory
     dsCommand='deepspeech --model '+os.path.join(projectDir,'deepspeech','models/output_graph.pbmm')+' --alphabet '+os.path.join(projectDir,'deepspeech','models/alphabet.txt')+' --lm '+os.path.join(projectDir,'deepspeech','models/lm.binary')+' --trie '+os.path.join(projectDir,'deepspeech','models/trie')+' --audio '
@@ -172,13 +173,23 @@ def audioToText(audio:tempfile.NamedTemporaryFile)->str:
         print('***',thisText,'***')
         readText.append(thisText)
         k+=1
+    #Can clear read temp files here
     readText=[r.split() for r in readText] #split readText into words
     #align all reads
-    
     return readText
+    overlapRange=int((depth-1)/2) #number of reads before and after a current read that might have overlap
+    while len(readText)>1:
+        print('len(readText):',len(readText))
+        newReads=[]
+        for i in range(overlapRange,len(readText)-(overlapRange-1)):#for each depth length window
+            newReads.append(alignReads(*readText[i-overlapRange:i+overlapRange+1]))
+        readText=newReads
+        overlapRange*=int((depth-1)/2)
+    return ' '.join(readText)
 
 def alignReads(*reads:str)->str:
     overlaps=[]
+    reads=[r for r in reads if r] #do not consider any empty reads
     readsToDo=list(range(len(reads)))
     readsToDo.reverse()
     while readsToDo:
@@ -190,19 +201,20 @@ def alignReads(*reads:str)->str:
         for k in readsToDo: #for the index of all other reads which haven't been compared to this one
             curPos=0
             while True:
-                if curPos > (len(thisRead)-1):#don't look at the last word, it has to be part of a longer match to count (2 word min)
+                if curPos >= (len(thisRead)-1):#don't look at the last word, it has to be part of a longer match to count (2 word min)
                     break
                 if thisRead[curPos] in reads[k]: #one word overlap
                     matchStart=reads[k].index(thisRead[curPos]) #index of the start of the overlap in the 'other' read
-                    if thisRead[curPos+1]==reads[k][matchStart+1]: #got at least a two word match, see how long it is and record
-                        matchLen=2
-                        while thisRead[curPos+matchLen]==reads[k][matchStart+matchLen]: #the match is at least matchLen+1 long
-                            matchLen+=1
-                            if (len(thisRead)<=curPos+matchLen) or (len(reads[k])<=matchStart+matchLen): #check that we aren't going to run off the end of either of our lists, break if we are
-                                break
-                        #we now know the match length, record it's length and start position on both reads
-                        overlaps.append({'reads':(i,k),'start':(curPos,matchStart),'length':matchLen})
-                        curPos=curPos+matchLen #don't need to check parts of these strings for another match
+                    if (len(reads[k])>matchStart+2):
+                        if thisRead[curPos+1]==reads[k][matchStart+1]: #got at least a two word match, see how long it is and record, also check that we aren't going to get an index out of range error
+                            matchLen=1 #re-check the second matched word to avoid a index out of range on the next line
+                            while thisRead[curPos+matchLen]==reads[k][matchStart+matchLen]: #the match is at least matchLen+1 long
+                                matchLen+=1
+                                if (len(thisRead)<=curPos+matchLen) or (len(reads[k])<=matchStart+matchLen): #check that we aren't going to run off the end of either of our lists, break if we are
+                                    break
+                                #we now know the match length, record it's length and start position on both reads
+                            overlaps.append({'reads':(i,k),'start':(curPos,matchStart),'length':matchLen})
+                            curPos=curPos+matchLen #don't need to check parts of these strings for another match
                 curPos+=1
     #reconstruct consensus sequence from overlaps
     #Which read is involved in the most overlaps?
@@ -222,6 +234,8 @@ def alignReads(*reads:str)->str:
         orderedReads.append(maxRead)
         matchedReads=matchedReads-{maxRead} #remove this read from consideration in order to find the next most prolific matcher
     #fix most matched read, then align others to that (and subsequent fixed reads) so that the longest overlap for that read matches
+    if not orderedReads: #no matches
+        return []
     orderedReads.reverse() #go in decending order when popped
     fixedReads=[orderedReads.pop()]
     readShifts={fixedReads[0]:0} #how far must each read be shifted to get it in alignment
@@ -248,8 +262,16 @@ def alignReads(*reads:str)->str:
             fixedOverlaps.extend(newFixedOverlaps)
             fixedReads.append(thisRead)
         else:
-            #no matches with fixed read, push back on orderedReads
+            #no matches with fixed read, push back on orderedReads. Check that remaining reads can match with fixed reads, if not, break
             orderedReads[0:0]=[thisRead]
+            remainingReads=set(orderedReads)
+            remainingOverlaps=[o['reads'] for o in overlaps if (set(o['reads']) & remainingReads)]
+            readsInRemainingOverlaps=set()
+            for rem in remainingOverlaps:
+                readsInRemainingOverlaps|=set(rem)
+            if set(remainingReads)==readsInRemainingOverlaps:#The remaining reads only overlap with each other
+                break
+            
     alignedReads={}
     for r in readShifts: #build a dict containing all the words at each shifted position
         thisShift=readShifts[r]
